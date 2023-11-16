@@ -1,6 +1,6 @@
-import {API} from "@/lib/config";
 import {fetchWithRetries} from "@/lib/request";
 import {pineconeClient, queryPineconeVectorStoreAndQueryLLM} from "@/lib/llm";
+import {PineconeIndexName} from "@/lib/config";
 
 
 export async function POST(
@@ -10,7 +10,7 @@ export async function POST(
   const streamId = params.streamId
   const {input, sessionId} = await request.json()
   // const completion = await getAiChat("gpt-3.5-turbo", input)
-  const text = await queryPineconeVectorStoreAndQueryLLM(pineconeClient, API.PINECONE.INDEX_NAME, input)
+  const text = await queryPineconeVectorStoreAndQueryLLM(pineconeClient, PineconeIndexName, input)
 
   const talkResponse = await fetchWithRetries(`https://api.d-id.com/talks/streams/${streamId}`, {
     method: 'POST',
