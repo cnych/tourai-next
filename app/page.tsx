@@ -4,7 +4,7 @@ import React, {FC, useEffect, useRef, useState} from "react";
 
 const Home: FC = () => {
   const talkVideoRef = useRef<HTMLVideoElement>(null)
-  const peerConnectionRef = useRef(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [streamId, setStreamId] = useState("");
   const [sessionId, setSessionId] = useState("");
   const streamIdRef = useRef(streamId);
@@ -14,7 +14,7 @@ const Home: FC = () => {
   const [peerStatusLabel, setPeerStatusLabel] = useState("");
   const [signalingStatusLabel, setSignalingStatusLabel] = useState("");
   const [streamingStatusLabel, setStreamingStatusLabel] = useState("");
-  const [statsIntervalId, setStatsIntervalId] = useState();
+  const [statsIntervalId, setStatsIntervalId] = useState<NodeJS.Timeout | undefined>(undefined);
   const videoIsPlayingRef = useRef(false);
   const lastBytesReceivedRef = useRef(0);
   const [input, setInput] = useState("");
@@ -124,7 +124,7 @@ const Home: FC = () => {
     closePC();
   }
 
-  const createPeerConnection = async (offer: string, iceServers: []) => {
+  const createPeerConnection = async (offer: RTCSessionDescriptionInit, iceServers: []) => {
     if (!peerConnectionRef.current) {
       peerConnectionRef.current = new RTCPeerConnection({iceServers});
       peerConnectionRef.current.addEventListener('icegatheringstatechange', onIceGatheringStateChange, true);
@@ -150,6 +150,7 @@ const Home: FC = () => {
   }
 
   const onIceGatheringStateChange = () => {
+    if (!peerConnectionRef.current) return;
     console.log('onIceGatheringStateChange ', peerConnectionRef.current.iceGatheringState);
     setIceGatheringStatusLabel(peerConnectionRef.current.iceGatheringState);
   }
@@ -177,6 +178,7 @@ const Home: FC = () => {
 
   const onIceConnectionStateChange = () => {
     console.log('onIceConnectionStateChange');
+    if (!peerConnectionRef.current) return;
     setIceStatusLabel(peerConnectionRef.current.iceConnectionState)
     if (peerConnectionRef.current.iceConnectionState === 'failed' || peerConnectionRef.current.iceConnectionState === 'closed') {
       stopAllStreams();
@@ -185,11 +187,13 @@ const Home: FC = () => {
   }
   const onConnectionStateChange = () => {
     console.log('onConnectionStateChange');
+    if (!peerConnectionRef.current) return;
     // not supported in firefox
     setPeerStatusLabel(peerConnectionRef.current.connectionState)
   }
   const onSignalingStateChange = () => {
     console.log('onSignalingStateChange');
+    if (!peerConnectionRef.current) return;
     setSignalingStatusLabel(peerConnectionRef.current.signalingState)
   }
 
@@ -228,6 +232,7 @@ const Home: FC = () => {
 
   const setVideoElement = (stream: MediaStream) => {
     if (!stream) return;
+    if (!talkVideoRef.current) return;
     talkVideoRef.current.srcObject = stream;
     talkVideoRef.current.loop = false;
 
@@ -242,16 +247,21 @@ const Home: FC = () => {
   }
 
   const playIdleVideo = () => {
-    talkVideoRef.current.srcObject = undefined;
+    if (!talkVideoRef.current) return;
+    talkVideoRef.current.srcObject = null;
     talkVideoRef.current.src = '/videos/or_idle.mp4';
     talkVideoRef.current.loop = true;
   }
 
   const stopAllStreams = () => {
-    if (talkVideoRef.current.srcObject) {
+    const videoElement = talkVideoRef.current;
+    if (!videoElement) return;
+
+    const mediaStream = videoElement.srcObject as MediaStream;
+    if (mediaStream) {
       console.log('stopping video streams');
-      talkVideoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      talkVideoRef.current.srcObject = null;
+      mediaStream.getTracks().forEach((track) => track.stop());
+      videoElement.srcObject = null;
     }
   }
 
