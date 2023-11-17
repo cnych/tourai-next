@@ -20,6 +20,8 @@ const Home: FC = () => {
   const videoIsPlayingRef = useRef(false);
   const lastBytesReceivedRef = useRef(0);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [initComplete, setInitComplete] = useState(false);
 
   useEffect(() => {
     handleConnect();
@@ -42,46 +44,57 @@ const Home: FC = () => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
+  useEffect(() => {
+    if (
+      iceGatheringStatusLabel === "complete" &&
+      iceStatusLabel === "connected" &&
+      peerStatusLabel === "connected" &&
+      signalingStatusLabel === "stable"
+    ) {
+      setInitComplete(true);
+    }
+  }, [
+    iceGatheringStatusLabel,
+    iceStatusLabel,
+    peerStatusLabel,
+    signalingStatusLabel,
+  ]);
+
   const handleConnect = async () => {
     console.log("[handleConnect] start connect......");
 
-    if (
-      peerConnectionRef.current &&
-      peerConnectionRef.current.connectionState === "connected"
-    ) {
+    if (peerConnectionRef.current?.connectionState === "connected") {
       return;
     }
 
     stopAllStreams();
     closePC();
 
-    const sessionResponse = await fetch("/api/talks/stream", {
-      method: "POST",
-    });
-    if (!sessionResponse || !sessionResponse.ok) {
-      console.error("[handleConnect] create session failed");
-      return;
-    }
-
-    const {
-      id: newStreamId,
-      offer,
-      ice_servers: iceServers,
-      session_id: newSessionId,
-    } = await sessionResponse.json();
-    setStreamId(newStreamId);
-    setSessionId(newSessionId);
-
-    console.log("[handleConnect] newStreamId=", newStreamId);
-    console.log("[handleConnect] newSessionId=", newSessionId);
-    console.log("[handleConnect] offer=", offer);
-    console.log("[handleConnect] iceServers=", iceServers);
-
     try {
+      const sessionResponse = await fetch("/api/talks/stream", {
+        method: "POST",
+      });
+      if (!sessionResponse.ok)
+        throw new Error("[handleConnect] create session failed");
+
+      const {
+        id: newStreamId,
+        offer,
+        ice_servers: iceServers,
+        session_id: newSessionId,
+      } = await sessionResponse.json();
+      setStreamId(newStreamId);
+      setSessionId(newSessionId);
+
+      console.log("[handleConnect] Session Info:", {
+        newStreamId,
+        newSessionId,
+        offer,
+        iceServers,
+      });
+
       const sessionClientAnswer = await createPeerConnection(offer, iceServers);
-
       console.log("[handleConnect] sessionClientAnswer=", sessionClientAnswer);
-
       const sdpResponse = await fetch("/api/talks/stream/start", {
         method: "POST",
         body: JSON.stringify({
@@ -91,17 +104,12 @@ const Home: FC = () => {
         }),
       });
 
-      if (sdpResponse && sdpResponse.ok) {
-        const sdpResult = await sdpResponse.json();
-        console.log("[handleConnect] sdpResult=", sdpResult);
-      } else {
-        console.error("[handleConnect] sdpResponse=", sdpResponse);
-      }
+      if (!sdpResponse.ok)
+        throw new Error("[handleConnect] start stream failed");
     } catch (e) {
-      console.log("error during streaming setup", e);
+      console.log("[handleConnect] error during streaming setup", e);
       stopAllStreams();
       closePC();
-      return;
     }
   };
 
@@ -111,6 +119,8 @@ const Home: FC = () => {
       console.log("[handleTalk] input is empty");
       return;
     }
+
+    setIsLoading(true);
 
     if (
       peerConnectionRef.current?.signalingState === "stable" ||
@@ -131,6 +141,7 @@ const Home: FC = () => {
       } else {
         console.error("[handleTalk] talkResponse=", talkResponse);
       }
+      setIsLoading(false);
     }
   };
 
@@ -195,15 +206,12 @@ const Home: FC = () => {
   };
 
   const onIceGatheringStateChange = () => {
+    console.log("onIceGatheringStateChange");
     if (!peerConnectionRef.current) return;
-    console.log(
-      "onIceGatheringStateChange ",
-      peerConnectionRef.current.iceGatheringState,
-    );
     setIceGatheringStatusLabel(peerConnectionRef.current.iceGatheringState);
   };
-
   const onIceCandidate = async (event: RTCPeerConnectionIceEvent) => {
+    console.log("onIceCandidate");
     if (event.candidate) {
       const { candidate, sdpMid, sdpMLineIndex } = event.candidate;
       const resp = await fetch("/api/talks/stream/ice", {
@@ -223,7 +231,6 @@ const Home: FC = () => {
       }
     }
   };
-
   const onIceConnectionStateChange = () => {
     console.log("onIceConnectionStateChange");
     if (!peerConnectionRef.current) return;
@@ -419,25 +426,30 @@ const Home: FC = () => {
         </div>
         <br />
 
-        <div className="flex items-center mt-8 m-auto">
-          <input
-            className="p-3"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-            }}
-          />
+        {initComplete ? (
+          <div className="flex items-center mt-8 m-auto">
+            <input
+              className="p-3"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+              }}
+            />
 
-          <button
-            id="talk-button"
-            type="button"
-            onClick={() => {
-              handleTalk();
-            }}
-          >
-            Start
-          </button>
-        </div>
+            <button
+              id="talk-button"
+              type="button"
+              disabled={isLoading}
+              onClick={() => {
+                handleTalk();
+              }}
+            >
+              Start
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center mt-8 m-auto">init...</div>
+        )}
       </div>
     </main>
   );

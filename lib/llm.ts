@@ -1,30 +1,37 @@
-import {OpenAIEmbeddings} from "langchain/embeddings/openai";
-import {RecursiveCharacterTextSplitter} from "langchain/text_splitter";
-import {OpenAI} from 'langchain/llms/openai';
-import {loadQAStuffChain} from "langchain/chains";
-import {Document} from "langchain/document";
-import {Pinecone} from "@pinecone-database/pinecone";
+import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { OpenAI } from "langchain/llms/openai";
+import { loadQAStuffChain } from "langchain/chains";
+import { Document } from "langchain/document";
+import { Pinecone } from "@pinecone-database/pinecone";
 
 export const pineconeClient = new Pinecone({
-    apiKey: process.env.PINECONE_API_KEY || '',
-    environment: process.env.PINECONE_ENVIRONMENT || ''
-  })
+  apiKey: process.env.PINECONE_API_KEY || "",
+  environment: process.env.PINECONE_ENVIRONMENT || "",
+});
 
 export const queryPineconeVectorStoreAndQueryLLM = async (
-  client: Pinecone, indexName: string, question: string
+  client: Pinecone,
+  indexName: string,
+  question: string,
 ) => {
   // 1. start query process
-  console.log("Quering Pinecone vector store...")
+  console.log("Quering Pinecone vector store...");
   // 2. Retrive the Pinecone index
-  const index = client.Index(indexName)
+  const index = client.Index(indexName);
   // 3.Create query embedding
-  const queryEmbedding = await new OpenAIEmbeddings().embedQuery(question)
+  const queryEmbedding = await new OpenAIEmbeddings({
+    openAIApiKey: process.env.OPENAI_API_KEY,
+    configuration: {
+      baseURL: process.env.OPENAI_API_BASE,
+    },
+  }).embedQuery(question);
   // 4. Query Pinecone index and return top 10 matches
   let queryResponse = await index.query({
-      topK: 10,
-      vector: queryEmbedding,
-      includeMetadata: true,
-      includeValues: true,
+    topK: 10,
+    vector: queryEmbedding,
+    includeMetadata: true,
+    includeValues: true,
   });
   // 5. Log the number of matches
   console.log(`Found ${queryResponse.matches.length} matches...`);
@@ -32,7 +39,12 @@ export const queryPineconeVectorStoreAndQueryLLM = async (
   console.log(`Asking question: ${question}...`);
   if (queryResponse.matches.length) {
     // 7. Create an OpenAI instance and load the QAStuffChain
-    const llm = new OpenAI({});
+    const llm = new OpenAI({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      configuration: {
+        baseURL: process.env.OPENAI_API_BASE,
+      },
+    });
     const chain = loadQAStuffChain(llm);
     // 8. Extract and concatenate page content from matched documents
     const concatenatedPageContent = queryResponse.matches
@@ -45,17 +57,17 @@ export const queryPineconeVectorStoreAndQueryLLM = async (
     });
     // 10. Log the answer
     console.log(`Answer: ${result.text}`);
-    return result.text
+    return result.text;
   } else {
     // 11. Log that there are no matches, so GPT-3 will not be queried
-    console.log('Since there are no matches, GPT-3 will not be queried.');
+    console.log("Since there are no matches, GPT-3 will not be queried.");
   }
-}
+};
 
 export const createPineconeIndex = async (
   client: Pinecone,
   indexName: string,
-  vectorDimension: number
+  vectorDimension: number,
 ) => {
   // 1. Initiate index existence check
   console.log(`Checking "${indexName}"...`);
@@ -72,20 +84,22 @@ export const createPineconeIndex = async (
   console.log(`Creating "${indexName}"...`);
   // 5. Create index
   await client.createIndex({
-      name: indexName,
-      dimension: vectorDimension,
-      metric: 'cosine',
+    name: indexName,
+    dimension: vectorDimension,
+    metric: "cosine",
   });
   // 6. Log successful creation
   console.log(`Creating index.... please wait for it to finish initializing.`);
   // 7. Wait for index initialization
   await new Promise((resolve) => setTimeout(resolve, 8000));
-
 };
 
-
-export const updatePinecone = async (client:Pinecone, indexName:string, docs:any) => {
-  console.log('Retrieving Pinecone index...');
+export const updatePinecone = async (
+  client: Pinecone,
+  indexName: string,
+  docs: any,
+) => {
+  console.log("Retrieving Pinecone index...");
   // 1. Retrieve Pinecone index
   const index = client.Index(indexName);
   // 2. Log the retrieved index name
@@ -99,24 +113,29 @@ export const updatePinecone = async (client:Pinecone, indexName:string, docs:any
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
     });
-    console.log('Splitting text into chunks...');
+    console.log("Splitting text into chunks...");
     // 5. Split text into chunks (documents)
     const chunks = await textSplitter.createDocuments([text]);
     console.log(`Text split into ${chunks.length} chunks`);
     console.log(
-      `Calling OpenAI's Embedding endpoint documents with ${chunks.length} text chunks ...`
+      `Calling OpenAI's Embedding endpoint documents with ${chunks.length} text chunks ...`,
     );
     // 6. Create OpenAI embeddings for documents
-    const embeddingsArrays = await new OpenAIEmbeddings().embedDocuments(
-      chunks.map((chunk) => chunk.pageContent.replace(/\n/g, " "))
+    const embeddingsArrays = await new OpenAIEmbeddings({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      configuration: {
+        baseURL: process.env.OPENAI_API_BASE,
+      },
+    }).embedDocuments(
+      chunks.map((chunk) => chunk.pageContent.replace(/\n/g, " ")),
     );
-    console.log('Finished embedding documents');
+    console.log("Finished embedding documents");
     console.log(
-      `Creating ${chunks.length} vectors array with id, values, and metadata...`
+      `Creating ${chunks.length} vectors array with id, values, and metadata...`,
     );
     // 7. Create and upsert vectors in batches of 100
     const batchSize = 100;
-    let batch:any = [];
+    let batch: any = [];
     for (let idx = 0; idx < chunks.length; idx++) {
       const chunk = chunks[idx];
       const vector = {
@@ -129,7 +148,7 @@ export const updatePinecone = async (client:Pinecone, indexName:string, docs:any
           txtPath: txtPath,
         },
       };
-      batch = [...batch, vector]
+      batch = [...batch, vector];
       // When batch is full or it's the last item, upsert the vectors
       if (batch.length === batchSize || idx === chunks.length - 1) {
         await index.upsert(batch);
