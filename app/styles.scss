@@ -1,7 +1,4 @@
 .content {
-  width: 820px;
-  position: relative;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
 }
@@ -55,8 +52,8 @@ button:hover {
 }
 video {
   display: block;
-  /*border:1px solid;*/
-  //border-radius: 50%;
+  border:1px solid;
+  border-radius: 50%;
   background-color: #fff;
 }
 
