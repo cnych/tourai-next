@@ -41,6 +41,7 @@ export const queryPineconeVectorStoreAndQueryLLM = async (
     // 7. Create an OpenAI instance and load the QAStuffChain
     const llm = new OpenAI({
       openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: "gpt-3.5-turbo",
       configuration: {
         baseURL: process.env.OPENAI_API_BASE,
       },
